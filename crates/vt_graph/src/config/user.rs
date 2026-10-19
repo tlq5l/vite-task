@@ -3,13 +3,8 @@
 use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
-use serde::{
-    Deserialize, Deserializer,
-    de::{
-        MapAccess, SeqAccess, Visitor,
-        value::{MapAccessDeserializer, SeqAccessDeserializer},
-    },
-};
+use serde::{Deserialize, Deserializer};
+use serde_untagged::UntaggedEnumVisitor;
 #[cfg(all(test, not(clippy)))]
 use ts_rs::TS;
 use vec1::Vec1;
@@ -170,30 +165,14 @@ pub enum UserCacheConfig {
     Config(EnabledCacheConfig),
 }
 
-// Not `#[serde(untagged)]`: that replaces the error of every variant with a generic one, so a
-// mistyped setting would not be named.
+// Not `#[serde(untagged)]`, which replaces each variant's error with a generic one.
 impl<'de> Deserialize<'de> for UserCacheConfig {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct CacheConfigVisitor;
-
-        impl<'de> Visitor<'de> for CacheConfigVisitor {
-            type Value = UserCacheConfig;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("a boolean or an object of cache settings")
-            }
-
-            fn visit_bool<E>(self, enabled: bool) -> Result<Self::Value, E> {
-                Ok(UserCacheConfig::Bool(enabled))
-            }
-
-            fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Self::Value, A::Error> {
-                Deserialize::deserialize(MapAccessDeserializer::new(map))
-                    .map(UserCacheConfig::Config)
-            }
-        }
-
-        deserializer.deserialize_any(CacheConfigVisitor)
+        UntaggedEnumVisitor::new()
+            .expecting("a boolean or an object of cache settings")
+            .bool(|enabled| Ok(Self::Bool(enabled)))
+            .map(|map| map.deserialize().map(Self::Config))
+            .deserialize(deserializer)
     }
 }
 
@@ -363,35 +342,17 @@ pub enum UserTaskDefinition {
     CommandShorthand(Command),
 }
 
-// Not `#[serde(untagged)]`: that replaces the error of every variant with a generic one, so a
-// mistyped field would not be named.
+// Not `#[serde(untagged)]`, which replaces each variant's error with a generic one.
 impl<'de> Deserialize<'de> for UserTaskDefinition {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct TaskDefinitionVisitor;
-
-        impl<'de> Visitor<'de> for TaskDefinitionVisitor {
-            type Value = UserTaskDefinition;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("a command string, an array of command strings, or a task object")
-            }
-
-            fn visit_str<E>(self, command: &str) -> Result<Self::Value, E> {
-                Ok(UserTaskDefinition::CommandShorthand(Command::Single(command.into())))
-            }
-
-            fn visit_seq<A: SeqAccess<'de>>(self, seq: A) -> Result<Self::Value, A::Error> {
-                Deserialize::deserialize(SeqAccessDeserializer::new(seq))
-                    .map(|commands| UserTaskDefinition::CommandShorthand(Command::Array(commands)))
-            }
-
-            fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Self::Value, A::Error> {
-                Deserialize::deserialize(MapAccessDeserializer::new(map))
-                    .map(UserTaskDefinition::Object)
-            }
-        }
-
-        deserializer.deserialize_any(TaskDefinitionVisitor)
+        UntaggedEnumVisitor::new()
+            .expecting("a command string, an array of command strings, or a task object")
+            .string(|command| Ok(Self::CommandShorthand(Command::Single(command.into()))))
+            .seq(|seq| {
+                seq.deserialize().map(|commands| Self::CommandShorthand(Command::Array(commands)))
+            })
+            .map(|map| map.deserialize().map(Self::Object))
+            .deserialize(deserializer)
     }
 }
 
