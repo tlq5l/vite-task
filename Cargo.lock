@@ -1126,6 +1126,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
+name = "dunce"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1352,14 +1358,12 @@ dependencies = [
  "fspy_test_bin",
  "futures-util",
  "libc",
- "materialized_artifact",
  "nix 0.31.2",
  "ntapi",
  "ntest",
  "ouroboros",
  "rustc-hash",
  "sha2 0.11.0",
- "subprocess_test",
  "tar",
  "tempfile",
  "test-log",
@@ -1367,6 +1371,8 @@ dependencies = [
  "tokio",
  "tokio-util",
  "vt_casefold",
+ "vt_materialized_artifact",
+ "vt_subprocess_test",
  "which",
  "winapi",
  "wincode",
@@ -1438,18 +1444,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fspy_ipc_str"
-version = "0.0.0"
-dependencies = [
- "allocator-api2",
- "bumpalo",
- "bytemuck",
- "fspy_nostd",
- "fspy_nostd_alloc",
- "wincode",
-]
-
-[[package]]
 name = "fspy_nostd"
 version = "0.0.0"
 dependencies = [
@@ -1485,6 +1479,7 @@ dependencies = [
  "libc",
  "nix 0.31.2",
  "static_cell",
+ "syscalls",
 ]
 
 [[package]]
@@ -1531,22 +1526,21 @@ version = "0.0.0"
 dependencies = [
  "allocator-api2",
  "assert2",
- "bitflags 2.13.2",
  "bstr",
  "bumpalo",
  "bytemuck",
  "ctor",
- "fspy_ipc_str",
  "fspy_nostd",
  "fspy_nostd_alloc",
  "fspy_shm",
  "omnipath",
  "rustc-hash",
- "subprocess_test",
  "thiserror 2.0.18",
  "tokio",
  "uuid",
+ "vt_ipc_str",
  "vt_path",
+ "vt_subprocess_test",
  "winapi",
  "wincode",
 ]
@@ -1576,8 +1570,8 @@ version = "0.0.0"
 dependencies = [
  "ctor",
  "fspy_nostd",
- "subprocess_test",
  "tempfile",
+ "vt_subprocess_test",
  "windows-sys 0.61.2",
 ]
 
@@ -2463,24 +2457,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "materialized_artifact"
-version = "0.0.0"
-dependencies = [
- "materialized_artifact_macros",
- "tempfile",
-]
-
-[[package]]
-name = "materialized_artifact_macros"
-version = "0.0.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
- "xxhash-rust",
-]
-
-[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3295,13 +3271,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "preload_test_lib"
-version = "0.0.0"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "pretty_assertions"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3350,45 +3319,6 @@ dependencies = [
  "syn 2.0.117",
  "version_check",
  "yansi",
-]
-
-[[package]]
-name = "pty_terminal"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "ctor",
- "ctrlc",
- "nix 0.31.2",
- "ntest",
- "portable-pty",
- "signal-hook 0.4.4",
- "subprocess_test",
- "terminal_size",
- "vt100",
-]
-
-[[package]]
-name = "pty_terminal_test"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "crossterm",
- "ctor",
- "ntest",
- "portable-pty",
- "pty_terminal",
- "pty_terminal_test_client",
- "subprocess_test",
-]
-
-[[package]]
-name = "pty_terminal_test_client"
-version = "0.0.0"
-dependencies = [
- "base64 0.22.1",
- "getrandom 0.4.2",
- "winapi",
 ]
 
 [[package]]
@@ -3762,9 +3692,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "once_cell",
  "ring",
@@ -4170,15 +4100,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef784004ca8777809dcdad6ac37629f0a97caee4c685fcea805278d81dd8b857"
 
 [[package]]
-name = "snapshot_test"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "similar 3.1.0",
-]
-
-[[package]]
 name = "socket2"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4186,18 +4107,6 @@ checksum = "86f4aa3ad99f2088c990dfa82d367e19cb29268ed67c574d10d0a4bfe71f07e0"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "socket_ipc"
-version = "0.0.0"
-dependencies = [
- "nix 0.31.2",
- "tempfile",
- "tokio",
- "uuid",
- "vt_path",
- "winapi",
 ]
 
 [[package]]
@@ -4268,18 +4177,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "subprocess_test"
-version = "0.0.0"
-dependencies = [
- "base64 0.22.1",
- "ctor",
- "fspy",
- "portable-pty",
- "rustc-hash",
- "wincode",
 ]
 
 [[package]]
@@ -5034,12 +4931,10 @@ dependencies = [
  "derive_more",
  "fspy",
  "futures-util",
- "materialized_artifact",
  "nix 0.31.2",
  "once_cell",
  "owo-colors",
  "petgraph",
- "pty_terminal_test_client",
  "rayon",
  "rusqlite",
  "rustc-hash",
@@ -5059,8 +4954,10 @@ dependencies = [
  "vt_glob",
  "vt_graph",
  "vt_ipc_shared",
+ "vt_materialized_artifact",
  "vt_path",
  "vt_plan",
+ "vt_pty_terminal_test_client",
  "vt_remote_cache",
  "vt_select",
  "vt_server",
@@ -5094,26 +4991,27 @@ dependencies = [
  "cow-utils",
  "cp_r",
  "ctrlc",
+ "dunce",
  "jsonc-parser",
  "libc",
  "libtest-mimic",
  "nix 0.31.2",
  "notify",
- "preload_test_lib",
- "pty_terminal",
- "pty_terminal_test",
- "pty_terminal_test_client",
  "regex",
  "serde",
  "serde_json",
  "shell-escape",
- "snapshot_test",
  "tempfile",
  "tokio",
  "toml",
  "vec1",
  "vt",
  "vt_path",
+ "vt_preload_test_lib",
+ "vt_pty_terminal",
+ "vt_pty_terminal_test",
+ "vt_pty_terminal_test_client",
+ "vt_snapshot_test",
  "vt_str",
  "vt_workspace",
  "which",
@@ -5133,12 +5031,12 @@ dependencies = [
 name = "vt_client"
 version = "0.0.0"
 dependencies = [
- "fspy_ipc_str",
  "rustc-hash",
- "socket_ipc",
  "vt_casefold",
  "vt_ipc_shared",
+ "vt_ipc_str",
  "vt_path",
+ "vt_socket_ipc",
  "wincode",
 ]
 
@@ -5198,9 +5096,39 @@ dependencies = [
 name = "vt_ipc_shared"
 version = "0.0.0"
 dependencies = [
- "fspy_ipc_str",
  "rustc-hash",
+ "vt_ipc_str",
  "wincode",
+]
+
+[[package]]
+name = "vt_ipc_str"
+version = "0.0.0"
+dependencies = [
+ "allocator-api2",
+ "bumpalo",
+ "bytemuck",
+ "fspy_nostd",
+ "fspy_nostd_alloc",
+ "wincode",
+]
+
+[[package]]
+name = "vt_materialized_artifact"
+version = "0.0.0"
+dependencies = [
+ "tempfile",
+ "vt_materialized_artifact_macros",
+]
+
+[[package]]
+name = "vt_materialized_artifact_macros"
+version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -5238,7 +5166,6 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "shell-escape",
- "snapshot_test",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -5253,6 +5180,7 @@ dependencies = [
  "vt_path",
  "vt_powershell",
  "vt_shell",
+ "vt_snapshot_test",
  "vt_str",
  "vt_workspace",
  "which",
@@ -5266,6 +5194,52 @@ dependencies = [
  "tempfile",
  "vt_path",
  "which",
+]
+
+[[package]]
+name = "vt_preload_test_lib"
+version = "0.0.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "vt_pty_terminal"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "ctor",
+ "ctrlc",
+ "nix 0.31.2",
+ "ntest",
+ "portable-pty",
+ "signal-hook 0.4.4",
+ "terminal_size",
+ "vt100",
+ "vt_subprocess_test",
+]
+
+[[package]]
+name = "vt_pty_terminal_test"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "crossterm",
+ "ctor",
+ "ntest",
+ "portable-pty",
+ "vt_pty_terminal",
+ "vt_pty_terminal_test_client",
+ "vt_subprocess_test",
+]
+
+[[package]]
+name = "vt_pty_terminal_test_client"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.4.2",
+ "winapi",
 ]
 
 [[package]]
@@ -5303,10 +5277,8 @@ dependencies = [
 name = "vt_server"
 version = "0.0.0"
 dependencies = [
- "fspy_ipc_str",
  "futures",
  "rustc-hash",
- "socket_ipc",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
@@ -5315,7 +5287,9 @@ dependencies = [
  "vt_client",
  "vt_glob",
  "vt_ipc_shared",
+ "vt_ipc_str",
  "vt_path",
+ "vt_socket_ipc",
  "wincode",
 ]
 
@@ -5331,6 +5305,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "vt_snapshot_test"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "similar 3.1.0",
+]
+
+[[package]]
+name = "vt_socket_ipc"
+version = "0.0.0"
+dependencies = [
+ "nix 0.31.2",
+ "tempfile",
+ "tokio",
+ "uuid",
+ "vt_path",
+ "winapi",
+]
+
+[[package]]
 name = "vt_str"
 version = "0.1.0"
 dependencies = [
@@ -5338,6 +5333,18 @@ dependencies = [
  "diff-struct",
  "serde",
  "ts-rs",
+ "wincode",
+]
+
+[[package]]
+name = "vt_subprocess_test"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "ctor",
+ "fspy",
+ "portable-pty",
+ "rustc-hash",
  "wincode",
 ]
 

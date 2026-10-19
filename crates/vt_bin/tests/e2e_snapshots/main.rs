@@ -9,11 +9,11 @@ use std::{
 };
 
 use cp_r::CopyOptions;
-use pty_terminal::{geo::ScreenSize, terminal::CommandBuilder};
-use pty_terminal_test::TestTerminal;
 use redact::redact_e2e_output;
 use vec1::Vec1;
 use vt_path::{AbsolutePath, AbsolutePathBuf, RelativePathBuf};
+use vt_pty_terminal::{geo::ScreenSize, terminal::CommandBuilder};
+use vt_pty_terminal_test::TestTerminal;
 use vt_str::Str;
 use vt_workspace::find_workspace_root;
 
@@ -311,10 +311,10 @@ enum TerminationState {
 /// line, so snapshots stay machine-independent.
 fn resolve_env_placeholder(raw: &str) -> std::borrow::Cow<'_, OsStr> {
     if raw == "<PRELOAD_TEST_LIB_PATH>" {
-        let path = env::var_os("CARGO_CDYLIB_FILE_PRELOAD_TEST_LIB").unwrap_or_else(|| {
+        let path = env::var_os("CARGO_CDYLIB_FILE_VT_PRELOAD_TEST_LIB").unwrap_or_else(|| {
             panic!(
-                "CARGO_CDYLIB_FILE_PRELOAD_TEST_LIB not set; the e2e harness requires \
-                 the preload_test_lib cdylib artifact to be built by cargo"
+                "CARGO_CDYLIB_FILE_VT_PRELOAD_TEST_LIB not set; the e2e harness requires \
+                 the vt_preload_test_lib cdylib artifact to be built by cargo"
             )
         });
         std::borrow::Cow::Owned(path)
@@ -324,7 +324,7 @@ fn resolve_env_placeholder(raw: &str) -> std::borrow::Cow<'_, OsStr> {
 }
 
 /// Render the byte stream produced by `screen_contents_formatted` (which uses
-/// `vt100::Screen::rows_formatted` — see [`pty_terminal`]) into a
+/// `vt100::Screen::rows_formatted` — see [`vt_pty_terminal`]) into a
 /// snapshot-friendly string. Newlines (added as row separators by the PTY
 /// helper) stay literal so the snapshot remains multi-line; SGR escapes and
 /// other bytes outside printable ASCII come out as `\xNN`, `\t`, etc.
@@ -366,8 +366,14 @@ fn link_tools_node_modules(tmp_dir: &std::path::Path) {
 /// Append a fenced markdown block containing `body`. The opening and closing
 /// fences sit on their own lines, and trailing whitespace inside `body` is
 /// trimmed so the close fence isn't preceded by blank lines.
+///
+/// The `^C` that Unix terminal drivers echo when ETX (0x03) is written to the
+/// PTY is removed first, so a screen left with only the echo is as empty as
+/// on Windows, whose `ConPTY` doesn't echo it.
 #[expect(clippy::disallowed_types, reason = "String required by mutable appender")]
 fn push_fenced_block(out: &mut String, body: &str) {
+    use cow_utils::CowUtils as _;
+    let body = body.cow_replace("^C", "");
     let trimmed = body.trim_end_matches(['\n', ' ', '\t']);
     out.push_str("```\n");
     if !trimmed.is_empty() {
@@ -392,7 +398,7 @@ fn run_case(
     case_index: usize,
     e2e: &E2e,
 ) -> Result<(), String> {
-    let snapshots = snapshot_test::Snapshots::new(fixture_path.join("snapshots"));
+    let snapshots = vt_snapshot_test::Snapshots::new(fixture_path.join("snapshots"));
 
     // Copy the fixture to a per-case staging directory so the test runs in
     // isolation and workspace-root discovery doesn't walk past the fixture.
@@ -458,17 +464,29 @@ fn run_case(
             let argv = step.argv();
 
             let program = argv[0].as_str();
+            let step_cwd = e2e_stage_path.join(step.cwd().unwrap_or(&e2e.cwd));
             // Resolve the locally built task binaries exactly. Other programs
             // are resolved through the prepared PATH, allowing ignored tests
             // to opt into external toolchains without weakening the default
-            // suite's self-contained execution.
-            let mut cmd = if matches!(program, "vt" | "vtt") {
+            // suite's self-contained execution. They're resolved like `vp`
+            // resolves task programs: portable-pty's own search on Windows
+            // prefers an exact name over `PATHEXT` extensions, so it would
+            // pick an extensionless shell shim such as `node_modules/.bin/pnpm`
+            // over `pnpm.cmd`, which Windows can't execute.
+            //
+            // `canonicalize` gives the staged workspace a verbatim (`\\?\`)
+            // path on Windows. `cmd.exe`, which runs npm-style `.cmd` shims
+            // such as pnpm's, rejects that as a working directory, so other
+            // programs start in its simplified form.
+            let (mut cmd, spawn_cwd) = if matches!(program, "vt" | "vtt") {
                 let exe_env = vt_str::format!("CARGO_BIN_EXE_{program}");
                 let resolved =
                     env::var_os(exe_env.as_str()).unwrap_or_else(|| panic!("{exe_env} not set"));
-                CommandBuilder::new(resolved)
+                (CommandBuilder::new(resolved), step_cwd.as_path())
             } else {
-                CommandBuilder::new(program)
+                let resolved = which::which_in(program, Some(&e2e_env_path), step_cwd.as_path())
+                    .unwrap_or_else(|err| panic!("failed to resolve {program}: {err}"));
+                (CommandBuilder::new(resolved), dunce::simplified(step_cwd.as_path()))
             };
             for arg in &argv[1..] {
                 cmd.arg(arg.as_str());
@@ -520,8 +538,7 @@ fn run_case(
                 let resolved = resolve_env_placeholder(v.as_str());
                 cmd.env(k.as_str(), AsRef::<OsStr>::as_ref(&resolved));
             }
-            let step_cwd = step.cwd().unwrap_or(&e2e.cwd);
-            cmd.cwd(e2e_stage_path.join(step_cwd).as_path());
+            cmd.cwd(spawn_cwd);
 
             let terminal = TestTerminal::spawn(SCREEN_SIZE, cmd).unwrap();
             let mut killer = terminal.child_handle.clone();

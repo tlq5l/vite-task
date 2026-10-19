@@ -1,0 +1,8 @@
+{
+  "tasks": {
+    "pnpm-greet": {
+      "command": "pnpm --silent run greet",
+      "cache": true
+    }
+  }
+}

@@ -15,9 +15,9 @@ use fspy_shared::{
     windows::{PAYLOAD_ID, Payload},
 };
 use futures_util::FutureExt;
-use materialized_artifact::{Artifact, artifact};
 use ntapi::{ntpsapi::NtResumeProcess, ntrtl::RtlNtStatusToDosError};
 use tokio_util::sync::CancellationToken;
+use vt_materialized_artifact::{Artifact, artifact};
 use winapi::{
     shared::{minwindef::TRUE, ntdef::NT_SUCCESS},
     um::winbase::CREATE_SUSPENDED,
@@ -36,6 +36,10 @@ pub struct PathAccessIterable {
 }
 
 impl PathAccessIterable {
+    /// Iterates over the path accesses in the order they were made.
+    ///
+    /// Accesses made at the same time by different threads or processes
+    /// appear in an unspecified order relative to each other.
     pub fn iter(&self) -> impl Iterator<Item = PathAccess<'_>> {
         self.ipc_accesses.iter_path_accesses()
     }

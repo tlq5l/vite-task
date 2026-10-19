@@ -99,8 +99,7 @@ unsafe fn handle_process_image(attribute_list: PPS_ATTRIBUTE_LIST) {
         // Sender serialization completes before this call returns, so IpcPath does not retain
         // the borrowed PS_ATTRIBUTE_IMAGE_NAME buffer past the NtCreateUserProcess call.
         // SAFETY: accessing the global client which was initialized during DLL_PROCESS_ATTACH
-        unsafe { global_client() }
-            .send(PathAccess { mode: AccessMode::READ, path: IpcPath::from_wide(image_path) });
+        unsafe { global_client() }.send(PathAccess::Read(IpcPath::from_wide(image_path)));
     }
 }
 
@@ -271,7 +270,7 @@ static DETOUR_NT_QUERY_ATTRIBUTES_FILE: Detour<
                 file_information: PFILE_BASIC_INFORMATION,
             ) -> HFILE {
                 // SAFETY: intercepting attribute query to record read access
-                unsafe { handle_open(AccessMode::READ, object_attributes) };
+                unsafe { handle_open(AccessMode::Read, object_attributes) };
                 // SAFETY: calling the original NtQueryAttributesFile with all original arguments
                 unsafe {
                     (DETOUR_NT_QUERY_ATTRIBUTES_FILE.real())(object_attributes, file_information)
@@ -294,10 +293,7 @@ unsafe fn handle_open(access_mode: impl ToAccessMode, path: impl ToAbsolutePath)
             let path_access = path.iter().rposition(|c| *c == u16::from(b'*')).map_or_else(
                 || {
                     // SAFETY: converting access mask to AccessMode via FFI-aware trait
-                    PathAccess {
-                        mode: access_mode.to_access_mode(),
-                        path: IpcPath::from_wide(path),
-                    }
+                    access_mode.to_access_mode().with_path(IpcPath::from_wide(path))
                 },
                 |wildcard_pos| {
                     let path_before_wildcard = &path[..wildcard_pos];
@@ -305,10 +301,7 @@ unsafe fn handle_open(access_mode: impl ToAccessMode, path: impl ToAbsolutePath)
                         .iter()
                         .rposition(|c| *c == u16::from(b'\\') || *c == u16::from(b'/'))
                         .unwrap_or(0);
-                    PathAccess {
-                        mode: AccessMode::READ_DIR,
-                        path: IpcPath::from_wide(&path[..slash_pos]),
-                    }
+                    PathAccess::ReadDir(IpcPath::from_wide(&path[..slash_pos]))
                 },
             );
             client.send(path_access);
@@ -443,7 +436,7 @@ static DETOUR_NT_QUERY_DIRECTORY_FILE: Detour<
                 restart_scan: BOOLEAN,
             ) -> NTSTATUS {
                 // SAFETY: intercepting directory query to record directory read access
-                unsafe { handle_open(AccessMode::READ_DIR, file_handle) };
+                unsafe { handle_open(AccessMode::ReadDir, file_handle) };
                 // SAFETY: calling the original NtQueryDirectoryFile
                 unsafe {
                     (DETOUR_NT_QUERY_DIRECTORY_FILE.real())(
@@ -497,7 +490,7 @@ static DETOUR_NT_QUERY_DIRECTORY_FILE_EX: Detour<NtQueryDirectoryFileExFn> =
                 file_name: PUNICODE_STRING,
             ) -> NTSTATUS {
                 // SAFETY: intercepting directory query to record directory read access
-                unsafe { handle_open(AccessMode::READ_DIR, file_handle) };
+                unsafe { handle_open(AccessMode::ReadDir, file_handle) };
                 // SAFETY: calling the original NtQueryDirectoryFileEx
                 unsafe {
                     (DETOUR_NT_QUERY_DIRECTORY_FILE_EX.real())(

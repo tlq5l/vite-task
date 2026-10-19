@@ -5,9 +5,7 @@
 //! two configs are independent.
 #![cfg(fspy)]
 
-use std::collections::hash_map::Entry;
-
-use fspy::{AccessMode, PathAccessIterable};
+use fspy::{IpcPath, PathAccess, PathAccessIterable};
 use rustc_hash::FxHashSet;
 use vt_path::{AbsolutePath, RelativePathBuf};
 
@@ -26,45 +24,49 @@ pub struct TrackedPathAccesses {
 
 impl TrackedPathAccesses {
     /// Build from fspy's raw iterable by stripping the workspace prefix and
-    /// normalizing `..` components. `.git/*` paths are skipped. User-configured
-    /// negatives are applied by the caller (see module docs).
+    /// normalizing `..` components. `.git/*` paths and pnpm's workspace state
+    /// files are skipped. User-configured negatives are applied by the caller
+    /// (see module docs).
     pub fn from_raw(raw: &PathAccessIterable, workspace_root: &AbsolutePath) -> Self {
+        // Strip workspace root and clean `..` components in one pass.
+        // fspy may report paths like `packages/sub-pkg/../shared/dist/output.js`.
+        let relative_path = |path: &IpcPath| {
+            path.strip_path_prefix(workspace_root, |strip_result| {
+                normalize_tracked_workspace_path(strip_result.ok()?)
+            })
+        };
+
         let mut accesses = Self::default();
         for access in raw.iter() {
-            // Strip workspace root and clean `..` components in one pass.
-            // fspy may report paths like `packages/sub-pkg/../shared/dist/output.js`.
-            let relative_path = access.path.strip_path_prefix(workspace_root, |strip_result| {
-                let Ok(stripped_path) = strip_result else {
-                    return None;
-                };
-                normalize_tracked_workspace_path(stripped_path)
-            });
-
-            let Some(relative_path) = relative_path else {
-                continue;
-            };
-
-            if access.mode.contains(AccessMode::READ) {
-                accesses
-                    .path_reads
-                    .entry(relative_path.clone())
-                    .or_insert(PathRead { read_dir_entries: false });
-            }
-            if access.mode.contains(AccessMode::WRITE) {
-                accesses.path_writes.insert(relative_path.clone());
-            }
-            if access.mode.contains(AccessMode::READ_DIR) {
-                match accesses.path_reads.entry(relative_path) {
-                    Entry::Occupied(mut occupied) => {
-                        occupied.get_mut().read_dir_entries = true;
+            match access {
+                PathAccess::Read(path) => {
+                    if let Some(path) = relative_path(path) {
+                        accesses.add_read(path);
                     }
-                    Entry::Vacant(vacant) => {
-                        vacant.insert(PathRead { read_dir_entries: true });
+                }
+                PathAccess::Write(path) => {
+                    if let Some(path) = relative_path(path) {
+                        accesses.path_writes.insert(path);
+                    }
+                }
+                PathAccess::ReadWrite(path) => {
+                    if let Some(path) = relative_path(path) {
+                        accesses.add_read(path.clone());
+                        accesses.path_writes.insert(path);
+                    }
+                }
+                PathAccess::ReadDir(path) => {
+                    if let Some(path) = relative_path(path) {
+                        accesses.add_read(path).read_dir_entries = true;
                     }
                 }
             }
         }
         accesses
+    }
+
+    fn add_read(&mut self, path: RelativePathBuf) -> &mut PathRead {
+        self.path_reads.entry(path).or_insert(PathRead { read_dir_entries: false })
     }
 }
 
@@ -88,13 +90,45 @@ fn normalize_tracked_workspace_path(stripped_path: &std::path::Path) -> Option<R
         return None;
     }
 
+    if is_pnpm_workspace_state(&relative) {
+        return None;
+    }
+
     Some(relative)
+}
+
+/// Whether `relative` is a `node_modules/.pnpm-workspace-state-*.json` file,
+/// pnpm's record of its dependency check before `pnpm run` and `pnpm exec`.
+/// pnpm rewrites it with a new timestamp whenever it rechecks dependencies,
+/// and it holds absolute project paths. Whether the check passes doesn't
+/// change what a cached task outputs.
+fn is_pnpm_workspace_state(relative: &RelativePathBuf) -> bool {
+    let path = relative.as_str();
+    let (dir, file_name) = path.rsplit_once('/').unwrap_or(("", path));
+    (dir == "node_modules" || dir.ends_with("/node_modules"))
+        && file_name
+            .strip_prefix(".pnpm-workspace-state-")
+            .is_some_and(|rest| rest.strip_suffix(".json").is_some())
 }
 
 #[cfg(test)]
 mod tests {
-    #[cfg(windows)]
     use super::*;
+
+    #[test]
+    fn pnpm_workspace_state_is_ignored() {
+        #[expect(
+            clippy::disallowed_types,
+            reason = "normalize_tracked_workspace_path requires std::path::Path for fspy strip_path_prefix output"
+        )]
+        let normalize = |path: &str| normalize_tracked_workspace_path(std::path::Path::new(path));
+        assert!(normalize("node_modules/.pnpm-workspace-state-v1.json").is_none());
+        assert!(normalize("node_modules/.pnpm-workspace-state-v2.json").is_none());
+        assert!(normalize("packages/a/node_modules/.pnpm-workspace-state-v1.json").is_none());
+        assert!(normalize("node_modules/.modules.yaml").is_some());
+        assert!(normalize(".pnpm-workspace-state-v1.json").is_some());
+        assert!(normalize("node_modules/a/.pnpm-workspace-state-v1.json").is_some());
+    }
 
     #[cfg(windows)]
     #[test]
